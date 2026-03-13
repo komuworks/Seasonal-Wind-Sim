@@ -93,6 +93,7 @@ let fpsAccumulatedTime = 0;
 let fpsFrameCount = 0;
 let solverTuneCooldownUntil = 0;
 const items = [];
+let itemSpawnSerial = 0;
 
 const fpsOutput = document.getElementById('fpsValue');
 const iterationsOutput = document.getElementById('iterationsValue');
@@ -820,7 +821,9 @@ function spawnItem(typeKey, fromTop = false) {
     spin: randomRange(-type.angleSpeed, type.angleSpeed),
     flutterPhase: randomRange(0, Math.PI * 2),
     flutterFreq: randomRange(0.75, 1.8),
+    wrapAround: itemSpawnSerial % 2 === 0,
   };
+  itemSpawnSerial += 1;
   items.push(item);
 }
 
@@ -873,6 +876,8 @@ function sampleVelocityAtCanvas(canvasX, canvasY) {
 function updateAndRenderItems() {
   syncItemPopulation();
   const dtSeconds = clamp(SIM.dt, 0.01, 0.2);
+  const horizontalBounce = 0.72;
+  const verticalBounce = 0.58;
 
   for (const item of items) {
     const flowInfluence = SIM[`${item.type}FlowInfluence`];
@@ -894,17 +899,41 @@ function updateAndRenderItems() {
     item.y += item.vy * dtSeconds;
     item.angle += item.spin * dtSeconds;
 
-    if (item.x < -item.size * 2) item.x = canvas.width + item.size;
-    if (item.x > canvas.width + item.size * 2) item.x = -item.size;
-    if (item.y > canvas.height + item.size * 2) {
-      item.y = -item.size * 2;
-      item.x = randomRange(0, canvas.width);
-      item.vx = randomRange(-8, 8);
-      item.vy = randomRange(-2, 6);
-    }
-    if (item.y < -canvas.height * 0.3) {
-      item.y = randomRange(-item.size * 2, 0);
-      item.x = randomRange(0, canvas.width);
+    if (item.wrapAround) {
+      if (item.x < -item.size * 2) item.x = canvas.width + item.size;
+      if (item.x > canvas.width + item.size * 2) item.x = -item.size;
+      if (item.y > canvas.height + item.size * 2) {
+        item.y = -item.size * 2;
+        item.x = randomRange(0, canvas.width);
+        item.vx = randomRange(-8, 8);
+        item.vy = randomRange(-2, 6);
+      }
+      if (item.y < -canvas.height * 0.3) {
+        item.y = randomRange(-item.size * 2, 0);
+        item.x = randomRange(0, canvas.width);
+      }
+    } else {
+      const minX = item.size;
+      const maxX = canvas.width - item.size;
+      const minY = item.size;
+      const maxY = canvas.height - item.size;
+
+      if (item.x < minX) {
+        item.x = minX;
+        item.vx = Math.abs(item.vx) * horizontalBounce;
+      } else if (item.x > maxX) {
+        item.x = maxX;
+        item.vx = -Math.abs(item.vx) * horizontalBounce;
+      }
+
+      if (item.y < minY) {
+        item.y = minY;
+        item.vy = Math.abs(item.vy) * verticalBounce;
+      } else if (item.y > maxY) {
+        item.y = maxY;
+        item.vy = -Math.abs(item.vy) * verticalBounce;
+        item.vx *= 0.94;
+      }
     }
 
     const typeConfig = findTypeConfig(item.type);
