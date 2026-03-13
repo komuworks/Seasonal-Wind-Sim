@@ -29,18 +29,22 @@ const SIM = {
   showVelocity: false,
   showPressure: false,
   showVorticity: false,
-  petalCount: 140,
-  petalGravity: 11,
-  petalFlowInfluence: 2.6,
-  petalFlutter: 1.1,
-  snowCount: 180,
-  snowGravity: 4.2,
-  snowFlowInfluence: 1.8,
-  snowFlutter: 0.45,
-  leafCount: 120,
-  leafGravity: 8.2,
-  leafFlowInfluence: 2.2,
-  leafFlutter: 1.4,
+  petalCount: 0,
+  petalGravity: 0.5,
+  petalFlowInfluence: 8,
+  petalFlutter: 0.25,
+  petalStretchResponse: 0.35,
+  petalRotationResponse: 0.45,
+  snowCount: 0,
+  snowGravity: 0.5,
+  snowFlowInfluence: 8,
+  snowFlutter: 0.25,
+  leafCount: 0,
+  leafGravity: 0.5,
+  leafFlowInfluence: 8,
+  leafFlutter: 0.25,
+  leafStretchResponse: 0.45,
+  leafRotationResponse: 0.6,
 };
 
 
@@ -767,6 +771,8 @@ const controls = [
   { id: 'petalGravity', key: 'petalGravity', format: (v) => Number(v).toFixed(1) },
   { id: 'petalFlowInfluence', key: 'petalFlowInfluence', format: (v) => Number(v).toFixed(2) },
   { id: 'petalFlutter', key: 'petalFlutter', format: (v) => Number(v).toFixed(2) },
+  { id: 'petalStretchResponse', key: 'petalStretchResponse', format: (v) => Number(v).toFixed(2) },
+  { id: 'petalRotationResponse', key: 'petalRotationResponse', format: (v) => Number(v).toFixed(2) },
   { id: 'snowCount', key: 'snowCount', format: (v) => Math.round(v).toString() },
   { id: 'snowGravity', key: 'snowGravity', format: (v) => Number(v).toFixed(1) },
   { id: 'snowFlowInfluence', key: 'snowFlowInfluence', format: (v) => Number(v).toFixed(2) },
@@ -775,6 +781,8 @@ const controls = [
   { id: 'leafGravity', key: 'leafGravity', format: (v) => Number(v).toFixed(1) },
   { id: 'leafFlowInfluence', key: 'leafFlowInfluence', format: (v) => Number(v).toFixed(2) },
   { id: 'leafFlutter', key: 'leafFlutter', format: (v) => Number(v).toFixed(2) },
+  { id: 'leafStretchResponse', key: 'leafStretchResponse', format: (v) => Number(v).toFixed(2) },
+  { id: 'leafRotationResponse', key: 'leafRotationResponse', format: (v) => Number(v).toFixed(2) },
 ];
 
 const resolutionOptions = new Set([1, 2, 4, 8, 16]);
@@ -821,6 +829,9 @@ function spawnItem(typeKey, fromTop = false) {
     spin: randomRange(-type.angleSpeed, type.angleSpeed),
     flutterPhase: randomRange(0, Math.PI * 2),
     flutterFreq: randomRange(0.75, 1.8),
+    flutterDirection: randomRange(0, Math.PI * 2),
+    flutterDrift: randomRange(0.45, 1.35),
+    flowStretch: 1,
     wrapAround: itemSpawnSerial % 2 === 0,
   };
   itemSpawnSerial += 1;
@@ -873,6 +884,23 @@ function sampleVelocityAtCanvas(canvasX, canvasY) {
   return { flowX, flowY };
 }
 
+function sampleScalarAtCanvas(field, canvasX, canvasY) {
+  const gx = clamp((canvasX / canvas.width) * gridWidth + 1, 1, gridWidth);
+  const gy = clamp((canvasY / canvas.height) * gridHeight + 1, 1, gridHeight);
+  const i0 = Math.floor(gx);
+  const i1 = Math.min(gridWidth, i0 + 1);
+  const j0 = Math.floor(gy);
+  const j1 = Math.min(gridHeight, j0 + 1);
+  const sx = gx - i0;
+  const sy = gy - j0;
+
+  const s00 = field[idx(i0, j0)];
+  const s10 = field[idx(i1, j0)];
+  const s01 = field[idx(i0, j1)];
+  const s11 = field[idx(i1, j1)];
+  return (s00 * (1 - sx) + s10 * sx) * (1 - sy) + (s01 * (1 - sx) + s11 * sx) * sy;
+}
+
 function updateAndRenderItems() {
   syncItemPopulation();
   const dtSeconds = clamp(SIM.dt, 0.01, 0.2);
@@ -887,10 +915,17 @@ function updateAndRenderItems() {
     const flowScaleX = canvas.width / Math.max(1, gridWidth) * 0.42;
     const flowScaleY = canvas.height / Math.max(1, gridHeight) * 0.42;
     const flutterOsc = Math.sin(performance.now() * 0.0023 * item.flutterFreq + item.flutterPhase);
+    const flowMagnitude = Math.hypot(flow.flowX, flow.flowY);
+
+    item.flutterDirection += randomRange(-1, 1) * item.flutterDrift * dtSeconds;
+    const flutterForce = flutterOsc * flutter * dtSeconds * 26;
+    const flutterDirX = Math.cos(item.flutterDirection);
+    const flutterDirY = Math.sin(item.flutterDirection);
 
     item.vx += flow.flowX * flowScaleX * flowInfluence * dtSeconds;
     item.vy += flow.flowY * flowScaleY * flowInfluence * dtSeconds;
-    item.vx += flutterOsc * flutter * dtSeconds * 26;
+    item.vx += flutterDirX * flutterForce;
+    item.vy += flutterDirY * flutterForce;
     item.vy += gravity * dtSeconds * 8.5;
     item.vx *= 0.98;
     item.vy *= 0.988;
@@ -898,6 +933,17 @@ function updateAndRenderItems() {
     item.x += item.vx * dtSeconds;
     item.y += item.vy * dtSeconds;
     item.angle += item.spin * dtSeconds;
+
+    if (item.type === 'petal' || item.type === 'leaf') {
+      const stretchResponse = SIM[`${item.type}StretchResponse`];
+      const rotationResponse = SIM[`${item.type}RotationResponse`];
+      const localVorticity = sampleScalarAtCanvas(vorticity, item.x, item.y);
+      const stretchBoost = clamp(flowMagnitude * stretchResponse * 0.45, 0, 1.4);
+      item.flowStretch = 1 + stretchBoost;
+      item.angle += localVorticity * rotationResponse * dtSeconds * 2.1;
+    } else {
+      item.flowStretch = 1;
+    }
 
     if (item.wrapAround) {
       if (item.x < -item.size * 2) item.x = canvas.width + item.size;
@@ -945,6 +991,11 @@ function updateAndRenderItems() {
     ctx.globalAlpha = item.alpha;
     ctx.translate(item.x, item.y);
     ctx.rotate(item.angle);
+    if (item.type === 'petal' || item.type === 'leaf') {
+      const sx = item.flowStretch;
+      const sy = 1 / Math.sqrt(Math.max(0.45, sx));
+      ctx.scale(sx, sy);
+    }
     ctx.fillStyle = typeConfig.color;
 
     if (item.type === 'snow') {
