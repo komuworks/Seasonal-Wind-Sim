@@ -230,15 +230,15 @@
         </div>
         <div class="control-row">
           <label for="petalStretchResponse">花びら伸縮応答</label>
-          <input id="petalStretchResponse" type="range" min="0" max="2" step="0.01" value="0.35" />
-          <input id="petalStretchResponseNumber" type="number" min="0" max="2" step="0.01" value="0.35" />
-          <output for="petalStretchResponse" id="petalStretchResponseValue">0.35</output>
+          <input id="petalStretchResponse" type="range" min="0" max="8" step="0.01" value="8" />
+          <input id="petalStretchResponseNumber" type="number" min="0" max="8" step="0.01" value="8" />
+          <output for="petalStretchResponse" id="petalStretchResponseValue">8.00</output>
         </div>
         <div class="control-row">
           <label for="petalRotationResponse">花びら回転応答</label>
-          <input id="petalRotationResponse" type="range" min="0" max="2" step="0.01" value="0.45" />
-          <input id="petalRotationResponseNumber" type="number" min="0" max="2" step="0.01" value="0.45" />
-          <output for="petalRotationResponse" id="petalRotationResponseValue">0.45</output>
+          <input id="petalRotationResponse" type="range" min="0" max="8" step="0.01" value="8" />
+          <input id="petalRotationResponseNumber" type="number" min="0" max="8" step="0.01" value="8" />
+          <output for="petalRotationResponse" id="petalRotationResponseValue">8.00</output>
         </div>
         <div class="control-row">
           <label for="snowCount">雪の数</label>
@@ -290,15 +290,15 @@
         </div>
         <div class="control-row">
           <label for="leafStretchResponse">落ち葉伸縮応答</label>
-          <input id="leafStretchResponse" type="range" min="0" max="2" step="0.01" value="0.45" />
-          <input id="leafStretchResponseNumber" type="number" min="0" max="2" step="0.01" value="0.45" />
-          <output for="leafStretchResponse" id="leafStretchResponseValue">0.45</output>
+          <input id="leafStretchResponse" type="range" min="0" max="8" step="0.01" value="8" />
+          <input id="leafStretchResponseNumber" type="number" min="0" max="8" step="0.01" value="8" />
+          <output for="leafStretchResponse" id="leafStretchResponseValue">8.00</output>
         </div>
         <div class="control-row">
           <label for="leafRotationResponse">落ち葉回転応答</label>
-          <input id="leafRotationResponse" type="range" min="0" max="2" step="0.01" value="0.6" />
-          <input id="leafRotationResponseNumber" type="number" min="0" max="2" step="0.01" value="0.6" />
-          <output for="leafRotationResponse" id="leafRotationResponseValue">0.60</output>
+          <input id="leafRotationResponse" type="range" min="0" max="8" step="0.01" value="8" />
+          <input id="leafRotationResponseNumber" type="number" min="0" max="8" step="0.01" value="8" />
+          <output for="leafRotationResponse" id="leafRotationResponseValue">8.00</output>
         </div>
         <div class="control-row control-row--select">
           <label for="simulationResolution">シミュレーション細かさ</label>
@@ -314,12 +314,12 @@
         <div class="control-row control-row--select">
           <label for="aaMode">AA モード</label>
           <select id="aaMode">
-            <option value="off">off</option>
+            <option value="off" selected>off</option>
             <option value="linear">linear</option>
-            <option value="blur" selected>blur</option>
+            <option value="blur">blur</option>
             <option value="fxaa">fxaa相当</option>
           </select>
-          <output id="aaModeValue">ブラー</output>
+          <output id="aaModeValue">オフ</output>
         </div>
         <div class="control-row">
           <label for="aaStrength">AA 強度</label>
@@ -342,7 +342,7 @@
         </div>
         <div class="control-row control-row--toggle">
           <label for="toggleDensity">表示: 染料（密度）</label>
-          <input id="toggleDensity" type="checkbox" checked />
+          <input id="toggleDensity" type="checkbox" />
           <output>ON/OFF</output>
         </div>
         <div class="control-row control-row--toggle">

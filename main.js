@@ -17,7 +17,7 @@ const SIM = {
   fade: 0.992,
   gridScale: 0.22,
   resolutionDivisor: 4,
-  aaMode: 'blur',
+  aaMode: 'off',
   aaStrengthBase: 0.55,
   aaMaxStrength: 1.85,
   aaStrength: 0,
@@ -25,7 +25,7 @@ const SIM = {
   clickBurstForceScale: 2.5,
   clickBurstDyeScale: 50,
   clickBurstRadius: 5,
-  showDensity: true,
+  showDensity: false,
   showVelocity: false,
   showPressure: false,
   showVorticity: false,
@@ -33,8 +33,8 @@ const SIM = {
   petalGravity: 0.5,
   petalFlowInfluence: 8,
   petalFlutter: 0.25,
-  petalStretchResponse: 0.35,
-  petalRotationResponse: 0.45,
+  petalStretchResponse: 8,
+  petalRotationResponse: 8,
   snowCount: 0,
   snowGravity: 0.5,
   snowFlowInfluence: 8,
@@ -43,8 +43,8 @@ const SIM = {
   leafGravity: 0.5,
   leafFlowInfluence: 8,
   leafFlutter: 0.25,
-  leafStretchResponse: 0.45,
-  leafRotationResponse: 0.6,
+  leafStretchResponse: 8,
+  leafRotationResponse: 8,
 };
 
 
@@ -905,9 +905,10 @@ function updateAndRenderItems() {
   syncItemPopulation();
   const dtSeconds = clamp(SIM.dt, 0.01, 0.2);
   const horizontalBounce = 0.72;
-  const verticalBounce = 0.58;
+  const verticalBounce = 0;
 
   for (const item of items) {
+    const touchingBottom = !item.wrapAround && item.y >= canvas.height - item.size - 0.5;
     const flowInfluence = SIM[`${item.type}FlowInfluence`];
     const gravity = SIM[`${item.type}Gravity`];
     const flutter = SIM[`${item.type}Flutter`];
@@ -918,7 +919,8 @@ function updateAndRenderItems() {
     const flowMagnitude = Math.hypot(flow.flowX, flow.flowY);
 
     item.flutterDirection += randomRange(-1, 1) * item.flutterDrift * dtSeconds;
-    const flutterForce = flutterOsc * flutter * dtSeconds * 26;
+    const bottomFlutterDamping = touchingBottom ? 0.2 : 1;
+    const flutterForce = flutterOsc * flutter * dtSeconds * 26 * bottomFlutterDamping;
     const flutterDirX = Math.cos(item.flutterDirection);
     const flutterDirY = Math.sin(item.flutterDirection);
 
@@ -938,9 +940,11 @@ function updateAndRenderItems() {
       const stretchResponse = SIM[`${item.type}StretchResponse`];
       const rotationResponse = SIM[`${item.type}RotationResponse`];
       const localVorticity = sampleScalarAtCanvas(vorticity, item.x, item.y);
-      const stretchBoost = clamp(flowMagnitude * stretchResponse * 0.45, 0, 1.4);
+      const bottomStretchDamping = touchingBottom ? 0.25 : 1;
+      const bottomRotationDamping = touchingBottom ? 0.3 : 1;
+      const stretchBoost = clamp(flowMagnitude * stretchResponse * 0.45 * bottomStretchDamping, 0, 1.4);
       item.flowStretch = 1 + stretchBoost;
-      item.angle += localVorticity * rotationResponse * dtSeconds * 2.1;
+      item.angle += localVorticity * rotationResponse * dtSeconds * 2.1 * bottomRotationDamping;
     } else {
       item.flowStretch = 1;
     }
@@ -978,7 +982,11 @@ function updateAndRenderItems() {
       } else if (item.y > maxY) {
         item.y = maxY;
         item.vy = -Math.abs(item.vy) * verticalBounce;
-        item.vx *= 0.94;
+        item.vx *= 0.82;
+      }
+
+      if (item.y >= maxY - 0.5) {
+        item.vy = Math.min(item.vy, 0);
       }
     }
 
@@ -1137,7 +1145,7 @@ function bindControls() {
     };
 
     const applyAaMode = (rawValue) => {
-      const value = aaModes.has(rawValue) ? rawValue : 'blur';
+      const value = aaModes.has(rawValue) ? rawValue : 'off';
       aaModeSelect.value = value;
       SIM.aaMode = value;
       aaModeOutput.textContent = aaModeLabels[value];
