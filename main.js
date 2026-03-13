@@ -328,9 +328,10 @@ function toGrid(clientX, clientY) {
   };
 }
 
-function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
+function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag, forceAtX = toX, forceAtY = toY) {
   const start = toGrid(fromX, fromY);
   const end = toGrid(toX, toY);
+  const forcePos = toGrid(forceAtX, forceAtY);
   const di = end.i - start.i;
   const dj = end.j - start.j;
   const distance = Math.hypot(toX - fromX, toY - fromY);
@@ -341,7 +342,7 @@ function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
   const dyeVelocityFactor = Math.max(0, 1 + SIM.dyeVelocityResponse * (velocity - 1));
   const forceAmount = SIM.forceScale * forceVelocityFactor;
 
-  const forceK = idx(end.i, end.j);
+  const forceK = idx(forcePos.i, forcePos.j);
   uPrev[forceK] += di * forceAmount;
   vPrev[forceK] += dj * forceAmount;
 
@@ -439,7 +440,7 @@ function addLinearInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag
     const sy = fromY + (toY - fromY) * t0;
     const ex = fromX + (toX - fromX) * t1;
     const ey = fromY + (toY - fromY) * t1;
-    addImpulse(sx, sy, ex, ey, stepElapsedMs, isDrag);
+    addImpulse(sx, sy, ex, ey, stepElapsedMs, isDrag, toX, toY);
   }
 }
 
@@ -504,7 +505,7 @@ function addBezierInterpolatedImpulses(
     const sy = cubicBezierPoint(fromY, c1y, c2y, toY, t0);
     const ex = cubicBezierPoint(fromX, c1x, c2x, toX, t1);
     const ey = cubicBezierPoint(fromY, c1y, c2y, toY, t1);
-    addImpulse(sx, sy, ex, ey, stepElapsedMs, isDrag);
+    addImpulse(sx, sy, ex, ey, stepElapsedMs, isDrag, toX, toY);
   }
 }
 
