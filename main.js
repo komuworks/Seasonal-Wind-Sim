@@ -29,7 +29,44 @@ const SIM = {
   showVelocity: false,
   showPressure: false,
   showVorticity: false,
+  petalCount: 140,
+  petalGravity: 11,
+  petalFlowInfluence: 2.6,
+  petalFlutter: 1.1,
+  snowCount: 180,
+  snowGravity: 4.2,
+  snowFlowInfluence: 1.8,
+  snowFlutter: 0.45,
+  leafCount: 120,
+  leafGravity: 8.2,
+  leafFlowInfluence: 2.2,
+  leafFlutter: 1.4,
 };
+
+
+const ITEM_TYPES = [
+  {
+    key: 'petal',
+    color: 'rgba(255, 189, 212, 0.9)',
+    sizeRange: [3, 7],
+    alphaRange: [0.45, 0.95],
+    angleSpeed: 1.3,
+  },
+  {
+    key: 'snow',
+    color: 'rgba(232, 242, 255, 0.95)',
+    sizeRange: [2, 4.8],
+    alphaRange: [0.35, 0.9],
+    angleSpeed: 0.75,
+  },
+  {
+    key: 'leaf',
+    color: 'rgba(255, 180, 97, 0.88)',
+    sizeRange: [3.2, 6.8],
+    alphaRange: [0.45, 0.9],
+    angleSpeed: 1.1,
+  },
+];
 
 let gridWidth = 0;
 let gridHeight = 0;
@@ -55,6 +92,7 @@ let lastFrameTime = 0;
 let fpsAccumulatedTime = 0;
 let fpsFrameCount = 0;
 let solverTuneCooldownUntil = 0;
+const items = [];
 
 const fpsOutput = document.getElementById('fpsValue');
 const iterationsOutput = document.getElementById('iterationsValue');
@@ -724,6 +762,18 @@ const controls = [
   { id: 'clickForceAmount', key: 'clickBurstForceScale', format: (v) => Number(v).toFixed(1) },
   { id: 'clickDyeAmount', key: 'clickBurstDyeScale', format: (v) => Number(v).toFixed(1) },
   { id: 'clickBrushSize', key: 'clickBurstRadius', format: (v) => `${Math.round(Number(v))}px` },
+  { id: 'petalCount', key: 'petalCount', format: (v) => Math.round(v).toString() },
+  { id: 'petalGravity', key: 'petalGravity', format: (v) => Number(v).toFixed(1) },
+  { id: 'petalFlowInfluence', key: 'petalFlowInfluence', format: (v) => Number(v).toFixed(2) },
+  { id: 'petalFlutter', key: 'petalFlutter', format: (v) => Number(v).toFixed(2) },
+  { id: 'snowCount', key: 'snowCount', format: (v) => Math.round(v).toString() },
+  { id: 'snowGravity', key: 'snowGravity', format: (v) => Number(v).toFixed(1) },
+  { id: 'snowFlowInfluence', key: 'snowFlowInfluence', format: (v) => Number(v).toFixed(2) },
+  { id: 'snowFlutter', key: 'snowFlutter', format: (v) => Number(v).toFixed(2) },
+  { id: 'leafCount', key: 'leafCount', format: (v) => Math.round(v).toString() },
+  { id: 'leafGravity', key: 'leafGravity', format: (v) => Number(v).toFixed(1) },
+  { id: 'leafFlowInfluence', key: 'leafFlowInfluence', format: (v) => Number(v).toFixed(2) },
+  { id: 'leafFlutter', key: 'leafFlutter', format: (v) => Number(v).toFixed(2) },
 ];
 
 const resolutionOptions = new Set([1, 2, 4, 8, 16]);
@@ -740,6 +790,157 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+
+
+function randomRange(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+function findTypeConfig(typeKey) {
+  return ITEM_TYPES.find((type) => type.key === typeKey);
+}
+
+function spawnItem(typeKey, fromTop = false) {
+  const type = findTypeConfig(typeKey);
+  if (!type) {
+    return;
+  }
+
+  const y = fromTop ? randomRange(-canvas.height * 0.15, 0) : randomRange(0, canvas.height);
+  const size = randomRange(type.sizeRange[0], type.sizeRange[1]);
+  const item = {
+    type: typeKey,
+    x: randomRange(0, canvas.width),
+    y,
+    vx: randomRange(-6, 6),
+    vy: randomRange(-3, 8),
+    size,
+    alpha: randomRange(type.alphaRange[0], type.alphaRange[1]),
+    angle: randomRange(0, Math.PI * 2),
+    spin: randomRange(-type.angleSpeed, type.angleSpeed),
+    flutterPhase: randomRange(0, Math.PI * 2),
+    flutterFreq: randomRange(0.75, 1.8),
+  };
+  items.push(item);
+}
+
+function syncItemPopulation() {
+  for (const type of ITEM_TYPES) {
+    const targetCount = Math.max(0, Math.round(SIM[`${type.key}Count`]));
+    const typeItems = items.filter((item) => item.type === type.key);
+
+    if (typeItems.length < targetCount) {
+      const missing = targetCount - typeItems.length;
+      for (let i = 0; i < missing; i += 1) {
+        spawnItem(type.key);
+      }
+    } else if (typeItems.length > targetCount) {
+      let removeCount = typeItems.length - targetCount;
+      for (let i = items.length - 1; i >= 0 && removeCount > 0; i -= 1) {
+        if (items[i].type === type.key) {
+          items.splice(i, 1);
+          removeCount -= 1;
+        }
+      }
+    }
+  }
+}
+
+function sampleVelocityAtCanvas(canvasX, canvasY) {
+  const gx = clamp((canvasX / canvas.width) * gridWidth + 1, 1, gridWidth);
+  const gy = clamp((canvasY / canvas.height) * gridHeight + 1, 1, gridHeight);
+  const i0 = Math.floor(gx);
+  const i1 = Math.min(gridWidth, i0 + 1);
+  const j0 = Math.floor(gy);
+  const j1 = Math.min(gridHeight, j0 + 1);
+  const sx = gx - i0;
+  const sy = gy - j0;
+
+  const u00 = u[idx(i0, j0)];
+  const u10 = u[idx(i1, j0)];
+  const u01 = u[idx(i0, j1)];
+  const u11 = u[idx(i1, j1)];
+  const v00 = v[idx(i0, j0)];
+  const v10 = v[idx(i1, j0)];
+  const v01 = v[idx(i0, j1)];
+  const v11 = v[idx(i1, j1)];
+
+  const flowX = (u00 * (1 - sx) + u10 * sx) * (1 - sy) + (u01 * (1 - sx) + u11 * sx) * sy;
+  const flowY = (v00 * (1 - sx) + v10 * sx) * (1 - sy) + (v01 * (1 - sx) + v11 * sx) * sy;
+  return { flowX, flowY };
+}
+
+function updateAndRenderItems() {
+  syncItemPopulation();
+  const dtSeconds = clamp(SIM.dt, 0.01, 0.2);
+
+  for (const item of items) {
+    const flowInfluence = SIM[`${item.type}FlowInfluence`];
+    const gravity = SIM[`${item.type}Gravity`];
+    const flutter = SIM[`${item.type}Flutter`];
+    const flow = sampleVelocityAtCanvas(item.x, item.y);
+    const flowScaleX = canvas.width / Math.max(1, gridWidth) * 0.42;
+    const flowScaleY = canvas.height / Math.max(1, gridHeight) * 0.42;
+    const flutterOsc = Math.sin(performance.now() * 0.0023 * item.flutterFreq + item.flutterPhase);
+
+    item.vx += flow.flowX * flowScaleX * flowInfluence * dtSeconds;
+    item.vy += flow.flowY * flowScaleY * flowInfluence * dtSeconds;
+    item.vx += flutterOsc * flutter * dtSeconds * 26;
+    item.vy += gravity * dtSeconds * 8.5;
+    item.vx *= 0.98;
+    item.vy *= 0.988;
+
+    item.x += item.vx * dtSeconds;
+    item.y += item.vy * dtSeconds;
+    item.angle += item.spin * dtSeconds;
+
+    if (item.x < -item.size * 2) item.x = canvas.width + item.size;
+    if (item.x > canvas.width + item.size * 2) item.x = -item.size;
+    if (item.y > canvas.height + item.size * 2) {
+      item.y = -item.size * 2;
+      item.x = randomRange(0, canvas.width);
+      item.vx = randomRange(-8, 8);
+      item.vy = randomRange(-2, 6);
+    }
+    if (item.y < -canvas.height * 0.3) {
+      item.y = randomRange(-item.size * 2, 0);
+      item.x = randomRange(0, canvas.width);
+    }
+
+    const typeConfig = findTypeConfig(item.type);
+    if (!typeConfig) {
+      continue;
+    }
+
+    ctx.save();
+    ctx.globalAlpha = item.alpha;
+    ctx.translate(item.x, item.y);
+    ctx.rotate(item.angle);
+    ctx.fillStyle = typeConfig.color;
+
+    if (item.type === 'snow') {
+      ctx.beginPath();
+      ctx.arc(0, 0, item.size * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (item.type === 'petal') {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, item.size, item.size * 0.55, 0.35, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, item.size, item.size * 0.45, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(73, 44, 22, 0.55)';
+      ctx.lineWidth = Math.max(0.6, item.size * 0.12);
+      ctx.beginPath();
+      ctx.moveTo(-item.size * 0.5, 0);
+      ctx.lineTo(item.size * 0.6, 0);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
 
 function computeRecommendedAaStrength(resolutionDivisor) {
   if (resolutionDivisor <= 2) {
@@ -946,6 +1147,7 @@ function loop() {
   velocityStep();
   densityStep();
   renderDensity();
+  updateAndRenderItems();
   requestAnimationFrame(loop);
 }
 
