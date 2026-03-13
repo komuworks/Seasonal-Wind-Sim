@@ -1020,9 +1020,8 @@ function updateAndRenderItems() {
     ctx.translate(item.x, item.y);
     ctx.rotate(item.angle);
     if (item.type === 'petal' || item.type === 'leaf') {
-      const sy = item.flowStretch;
-      const sx = 1 / Math.sqrt(Math.max(0.1, sy));
-      ctx.scale(sx, sy);
+      const sx = Math.max(0.1, item.flowStretch);
+      ctx.scale(sx, 1);
     }
     ctx.fillStyle = typeConfig.color;
 
@@ -1032,11 +1031,11 @@ function updateAndRenderItems() {
       ctx.fill();
     } else if (item.type === 'petal') {
       ctx.beginPath();
-      ctx.ellipse(0, 0, item.size, item.size * 0.55, 0.35, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, item.size * 0.55, item.size, 0.35, 0, Math.PI * 2);
       ctx.fill();
     } else {
       ctx.beginPath();
-      ctx.ellipse(0, 0, item.size, item.size * 0.45, 0.2, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, item.size * 0.45, item.size, 0.2, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = 'rgba(73, 44, 22, 0.55)';
       ctx.lineWidth = Math.max(0.6, item.size * 0.12);
