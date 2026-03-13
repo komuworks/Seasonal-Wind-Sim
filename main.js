@@ -809,6 +809,11 @@ function findTypeConfig(typeKey) {
   return ITEM_TYPES.find((type) => type.key === typeKey);
 }
 
+function easeOutCubic(t) {
+  const clampedT = clamp(t, 0, 1);
+  return 1 - (1 - clampedT) ** 3;
+}
+
 function spawnItem(typeKey, fromTop = false) {
   const type = findTypeConfig(typeKey);
   if (!type) {
@@ -832,6 +837,9 @@ function spawnItem(typeKey, fromTop = false) {
     flutterDirection: randomRange(0, Math.PI * 2),
     flutterDrift: randomRange(0.45, 1.35),
     flowStretch: 1,
+    stretchPhase: randomRange(0, Math.PI * 2),
+    stretchSpeed: randomRange(0.9, 1.5),
+    rotationBoost: 0,
     wrapAround: itemSpawnSerial % 2 === 0,
   };
   itemSpawnSerial += 1;
@@ -934,7 +942,6 @@ function updateAndRenderItems() {
 
     item.x += item.vx * dtSeconds;
     item.y += item.vy * dtSeconds;
-    item.angle += item.spin * dtSeconds;
 
     if (item.type === 'petal' || item.type === 'leaf') {
       const stretchResponse = SIM[`${item.type}StretchResponse`];
@@ -942,11 +949,24 @@ function updateAndRenderItems() {
       const localVorticity = sampleScalarAtCanvas(vorticity, item.x, item.y);
       const bottomStretchDamping = touchingBottom ? 0.25 : 1;
       const bottomRotationDamping = touchingBottom ? 0.3 : 1;
-      const stretchBoost = clamp(flowMagnitude * stretchResponse * 0.45 * bottomStretchDamping, 0, 1.4);
-      item.flowStretch = 1 + stretchBoost;
-      item.angle += localVorticity * rotationResponse * dtSeconds * 2.1 * bottomRotationDamping;
+      const stretchTempo = 0.65 + flowMagnitude * stretchResponse * 0.16 * bottomStretchDamping;
+      item.stretchPhase += dtSeconds * stretchTempo * item.stretchSpeed;
+
+      const stretchCycle = (Math.sin(item.stretchPhase) + 1) * 0.5;
+      const isShrinkingAfterPeak = Math.cos(item.stretchPhase) < 0;
+      const stretchCycleAdjusted = isShrinkingAfterPeak ? easeOutCubic(stretchCycle) : stretchCycle;
+      item.flowStretch = 0.1 + stretchCycleAdjusted * 0.9;
+
+      const rotationImpulse = Math.abs(localVorticity) * rotationResponse * 0.26 * bottomRotationDamping;
+      item.rotationBoost = clamp(item.rotationBoost + rotationImpulse * dtSeconds, 0, 3.2);
+      const rotationDecay = Math.exp(-dtSeconds * 1.45);
+      item.rotationBoost *= rotationDecay;
+      const spinDirection = item.spin === 0 ? 1 : Math.sign(item.spin);
+      const amplifiedSpin = item.spin + spinDirection * item.rotationBoost;
+      item.angle += amplifiedSpin * dtSeconds;
     } else {
       item.flowStretch = 1;
+      item.angle += item.spin * dtSeconds;
     }
 
     if (item.wrapAround) {
@@ -1000,8 +1020,8 @@ function updateAndRenderItems() {
     ctx.translate(item.x, item.y);
     ctx.rotate(item.angle);
     if (item.type === 'petal' || item.type === 'leaf') {
-      const sx = item.flowStretch;
-      const sy = 1 / Math.sqrt(Math.max(0.45, sx));
+      const sy = item.flowStretch;
+      const sx = 1 / Math.sqrt(Math.max(0.1, sy));
       ctx.scale(sx, sy);
     }
     ctx.fillStyle = typeConfig.color;
