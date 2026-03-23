@@ -17,10 +17,6 @@ const SIM = {
   fade: 0.992,
   gridScale: 0.22,
   resolutionDivisor: 4,
-  aaMode: 'off',
-  aaStrengthBase: 0.55,
-  aaMaxStrength: 1.85,
-  aaStrength: 0,
   impulseInterpolationMode: 'linear',
   clickBurstForceScale: 2.5,
   clickBurstDyeScale: 50,
@@ -87,11 +83,6 @@ let imageData;
 let overlayImageData;
 let offscreen;
 let offCtx;
-let blurPassA;
-let blurPassACtx;
-let blurPassB;
-let blurPassBCtx;
-let blurCompositeData;
 let lastFrameTime = 0;
 let fpsAccumulatedTime = 0;
 let fpsFrameCount = 0;
@@ -142,17 +133,6 @@ function allocateGrid(width, height) {
   offscreen.height = gridHeight;
   offCtx = offscreen.getContext('2d');
 
-  blurPassA = document.createElement('canvas');
-  blurPassA.width = gridWidth;
-  blurPassA.height = gridHeight;
-  blurPassACtx = blurPassA.getContext('2d');
-
-  blurPassB = document.createElement('canvas');
-  blurPassB.width = gridWidth;
-  blurPassB.height = gridHeight;
-  blurPassBCtx = blurPassB.getContext('2d');
-
-  blurCompositeData = new ImageData(gridWidth, gridHeight);
 }
 
 function reset() {
@@ -568,95 +548,9 @@ function renderDensity() {
 
   offCtx.putImageData(imageData, 0, 0);
 
-  const blurRadius = clamp(Math.log2(Math.max(1, SIM.resolutionDivisor)), 0, 2);
-  const blurPasses = blurRadius > 1.2 ? 2 : blurRadius > 0.15 ? 1 : 0;
-
-  if (blurPasses > 0) {
-    blurPassACtx.clearRect(0, 0, gridWidth, gridHeight);
-    blurPassACtx.filter = `blur(${blurRadius.toFixed(2)}px)`;
-    blurPassACtx.drawImage(offscreen, 0, 0);
-    blurPassACtx.filter = 'none';
-
-    let blurredCtx = blurPassACtx;
-
-    if (blurPasses === 2) {
-      blurPassBCtx.clearRect(0, 0, gridWidth, gridHeight);
-      blurPassBCtx.filter = `blur(${(blurRadius * 0.75).toFixed(2)}px)`;
-      blurPassBCtx.drawImage(blurPassA, 0, 0);
-      blurPassBCtx.filter = 'none';
-      blurredCtx = blurPassBCtx;
-    }
-
-    const srcPixels = imageData.data;
-    const blurredPixels = blurredCtx.getImageData(0, 0, gridWidth, gridHeight).data;
-    const outPixels = blurCompositeData.data;
-    const blurBlendMax = clamp(0.28 + blurRadius * 0.14, 0.15, 0.55);
-
-    let pIdx = 0;
-    for (let j = 1; j <= gridHeight; j += 1) {
-      for (let i = 1; i <= gridWidth; i += 1) {
-        const dx = Math.abs(dens[idx(i + 1, j)] - dens[idx(i - 1, j)]);
-        const dy = Math.abs(dens[idx(i, j + 1)] - dens[idx(i, j - 1)]);
-        const grad = dx + dy;
-        const edgeWeight = clamp(grad / 160, 0, 1);
-        const smoothWeight = (1 - edgeWeight) ** 2;
-        const blend = smoothWeight * blurBlendMax;
-        const invBlend = 1 - blend;
-
-        outPixels[pIdx] = srcPixels[pIdx] * invBlend + blurredPixels[pIdx] * blend;
-        outPixels[pIdx + 1] = srcPixels[pIdx + 1] * invBlend + blurredPixels[pIdx + 1] * blend;
-        outPixels[pIdx + 2] = srcPixels[pIdx + 2] * invBlend + blurredPixels[pIdx + 2] * blend;
-        outPixels[pIdx + 3] = 255;
-        pIdx += 4;
-      }
-    }
-
-    offCtx.putImageData(blurCompositeData, 0, 0);
-  }
-
-  const isLowUpscale = SIM.resolutionDivisor <= 2;
   ctx.filter = 'none';
-
-  if (isLowUpscale) {
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
-  } else {
-    // 1/4 以上の低解像度では後段AAを適用。
-    const aaStrength = SIM.aaStrength;
-    if (SIM.aaMode === 'off') {
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
-    } else {
-      ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
-
-      if (SIM.aaMode === 'blur') {
-        ctx.save();
-        ctx.globalAlpha = clamp(0.08 + aaStrength * 0.12, 0.08, 0.35);
-        ctx.filter = `blur(${(0.35 + aaStrength * 0.45).toFixed(2)}px)`;
-        ctx.drawImage(canvas, 0, 0);
-        ctx.restore();
-      } else if (SIM.aaMode === 'fxaa') {
-        // FXAA 相当: ごく軽いブラー + サブピクセルの再サンプルでジャギーを緩和。
-        ctx.save();
-        ctx.globalAlpha = clamp(0.08 + aaStrength * 0.09, 0.08, 0.3);
-        ctx.filter = `blur(${(0.25 + aaStrength * 0.35).toFixed(2)}px)`;
-        ctx.drawImage(canvas, 0, 0);
-        ctx.restore();
-
-        const jitter = clamp(0.2 + aaStrength * 0.22, 0.2, 0.8);
-        ctx.save();
-        ctx.globalAlpha = clamp(0.04 + aaStrength * 0.04, 0.04, 0.14);
-        ctx.drawImage(canvas, -jitter, 0);
-        ctx.drawImage(canvas, jitter, 0);
-        ctx.drawImage(canvas, 0, -jitter);
-        ctx.drawImage(canvas, 0, jitter);
-        ctx.restore();
-      }
-    }
-  }
-
-  ctx.filter = 'none';
+  ctx.imageSmoothingEnabled = SIM.resolutionDivisor <= 2;
+  ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
 
   renderFieldOverlay(pressure, [255, 96, 96], [96, 132, 255], 0.58, SIM.showPressure);
   renderFieldOverlay(vorticity, [255, 178, 76], [128, 96, 255], 0.65, SIM.showVorticity);
@@ -788,7 +682,6 @@ const controls = [
 
 const resolutionOptions = new Set([1, 2, 4, 8, 16]);
 const interpolationModes = new Set(['bezier', 'linear']);
-const aaModes = new Set(['off', 'linear', 'blur', 'fxaa']);
 const overlayToggleMap = {
   showDensity: 'toggleDensity',
   showVelocity: 'toggleVelocity',
@@ -1050,37 +943,6 @@ function updateAndRenderItems() {
   }
 }
 
-function computeRecommendedAaStrength(resolutionDivisor) {
-  if (resolutionDivisor <= 2) {
-    return 0;
-  }
-
-  const upscaleSteps = Math.log2(resolutionDivisor / 2);
-  const strength = SIM.aaStrengthBase + upscaleSteps * 0.55;
-  return clamp(strength, 0, SIM.aaMaxStrength);
-}
-
-function updateAaStrengthDisplay() {
-  const aaStrengthSlider = document.getElementById('aaStrength');
-  const aaStrengthNumber = document.getElementById('aaStrengthNumber');
-  const aaStrengthOutput = document.getElementById('aaStrengthValue');
-  const aaStrengthDefaultOutput = document.getElementById('aaStrengthDefaultValue');
-  const recommended = computeRecommendedAaStrength(SIM.resolutionDivisor);
-
-  if (aaStrengthSlider) {
-    aaStrengthSlider.value = SIM.aaStrength.toFixed(2);
-  }
-  if (aaStrengthNumber) {
-    aaStrengthNumber.value = SIM.aaStrength.toFixed(2);
-  }
-  if (aaStrengthOutput) {
-    aaStrengthOutput.textContent = SIM.aaStrength.toFixed(2);
-  }
-  if (aaStrengthDefaultOutput) {
-    aaStrengthDefaultOutput.textContent = `推奨 ${recommended.toFixed(2)}`;
-  }
-}
-
 function updateIterationsDisplay() {
   if (iterationsOutput) {
     iterationsOutput.textContent = String(Math.round(SIM.iterations));
@@ -1140,12 +1002,6 @@ function bindControls() {
       resolutionSelect.value = String(value);
       SIM.resolutionDivisor = value;
       resolutionOutput.textContent = `1/${value}`;
-      const recommended = computeRecommendedAaStrength(SIM.resolutionDivisor);
-      SIM.aaStrength = clamp(SIM.aaStrength, 0, SIM.aaMaxStrength);
-      if (Math.abs(SIM.aaStrength - recommended) < 0.001) {
-        SIM.aaStrength = recommended;
-      }
-      updateAaStrengthDisplay();
       resize();
     };
 
@@ -1153,51 +1009,6 @@ function bindControls() {
     applyResolution(resolutionSelect.value);
   }
 
-
-  const aaModeSelect = document.getElementById('aaMode');
-  const aaModeOutput = document.getElementById('aaModeValue');
-  if (aaModeSelect && aaModeOutput) {
-    const aaModeLabels = {
-      off: 'オフ',
-      linear: '線形',
-      blur: 'ブラー',
-      fxaa: 'FXAA相当',
-    };
-
-    const applyAaMode = (rawValue) => {
-      const value = aaModes.has(rawValue) ? rawValue : 'off';
-      aaModeSelect.value = value;
-      SIM.aaMode = value;
-      aaModeOutput.textContent = aaModeLabels[value];
-    };
-
-    aaModeSelect.addEventListener('change', () => applyAaMode(aaModeSelect.value));
-    applyAaMode(aaModeSelect.value);
-  }
-
-  const aaStrengthSlider = document.getElementById('aaStrength');
-  const aaStrengthNumber = document.getElementById('aaStrengthNumber');
-  const aaStrengthResetButton = document.getElementById('aaStrengthReset');
-  if (aaStrengthSlider && aaStrengthNumber) {
-    const min = Number(aaStrengthSlider.min);
-    const max = Number(aaStrengthSlider.max);
-    const applyAaStrength = (rawValue) => {
-      const parsed = Number(rawValue);
-      const baseValue = Number.isFinite(parsed) ? parsed : SIM.aaStrength;
-      SIM.aaStrength = clamp(baseValue, min, max);
-      updateAaStrengthDisplay();
-    };
-
-    aaStrengthSlider.addEventListener('input', () => applyAaStrength(aaStrengthSlider.value));
-    aaStrengthNumber.addEventListener('input', () => applyAaStrength(aaStrengthNumber.value));
-  }
-
-  if (aaStrengthResetButton) {
-    aaStrengthResetButton.addEventListener('click', () => {
-      SIM.aaStrength = computeRecommendedAaStrength(SIM.resolutionDivisor);
-      updateAaStrengthDisplay();
-    });
-  }
 
   for (const [key, controlId] of Object.entries(overlayToggleMap)) {
     const input = document.getElementById(controlId);
@@ -1210,8 +1021,6 @@ function bindControls() {
     });
   }
 
-  SIM.aaStrength = computeRecommendedAaStrength(SIM.resolutionDivisor);
-  updateAaStrengthDisplay();
   updateIterationsDisplay();
 
   const interpolationModeSelect = document.getElementById('impulseInterpolationMode');
